@@ -1,0 +1,1 @@
+# Practical_NodeJS initgit add README.mdgit commit -m first commitgit branch -M maingit remote add origin https://github.com/miteshdev1008/Practical_NodeJS.gitgit push -u origin main
