@@ -4,24 +4,95 @@ const Role = require('../models/Role');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-
 exports.signup = async (req, res) => {
   try {
     const { firstName, lastName, email, username, password, phoneNumber, role } = req.body;
 
+    // Check for required fields
     if (!firstName || !lastName || !email || !username || !password || !role) {
       return res.status(400).json({ error: 'All required fields must be provided' });
     }
 
-    if (typeof firstName !== 'string' || typeof lastName !== 'string' || typeof email !== 'string' || typeof username !== 'string' || typeof password !== 'string') {
+    // Check input types
+    if (
+      typeof firstName !== 'string' ||
+      typeof lastName !== 'string' ||
+      typeof email !== 'string' ||
+      typeof username !== 'string' ||
+      typeof password !== 'string' ||
+      (phoneNumber && typeof phoneNumber !== 'string')
+    ) {
       return res.status(400).json({ error: 'Invalid input types' });
     }
 
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    // Password validation
+    const validatePassword = (password) => {
+      if (password.length < 6) {
+        return { isValid: false, error: 'Password must be at least 6 characters' };
+      }
+      if (!/\d/.test(password)) {
+        return { isValid: false, error: 'Password must contain at least one number' };
+      }
+      if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+        return { isValid: false, error: 'Password must contain at least one special character' };
+      }
+      if (!/[a-zA-Z]/.test(password)) {
+        return { isValid: false, error: 'Password must contain at least one letter' };
+      }
+      return { isValid: true };
+    };
+
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.isValid) {
+      return res.status(400).json({ error: passwordValidation.error });
     }
 
-   if (!mongoose.Types.ObjectId.isValid(role)) {
+    // Email validation
+    const validateEmail = (email) => {
+      if (!email) {
+        return { isValid: false, error: 'Email is required' };
+      }
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return { isValid: false, error: 'Invalid email format' };
+      }
+      if (email.length > 254) {
+        return { isValid: false, error: 'Email is too long' };
+      }
+      const domainParts = email.split('@')[1];
+      if (!domainParts.includes('.') || domainParts.split('.').pop().length < 2) {
+        return { isValid: false, error: 'Invalid email domain' };
+      }
+      return { isValid: true };
+    };
+
+    const emailValidation = validateEmail(email);
+    if (!emailValidation.isValid) {
+      return res.status(400).json({ error: emailValidation.error });
+    }
+
+    // Phone number validation (if provided)
+    const validatePhoneNumber = (phoneNumber) => {
+      if (!phoneNumber) {
+        return { isValid: true }; // Phone number is optional
+      }
+      const phoneRegex = /^\+?[1-9]\d{1,14}$/; // E.164 format or simple digits
+      if (!phoneRegex.test(phoneNumber)) {
+        return { isValid: false, error: 'Invalid phone number format' };
+      }
+      if (phoneNumber.length < 10 || phoneNumber.length > 15) {
+        return { isValid: false, error: 'Phone number must be between 10 and 15 digits' };
+      }
+      return { isValid: true };
+    };
+
+    const phoneValidation = validatePhoneNumber(phoneNumber);
+    if (!phoneValidation.isValid) {
+      return res.status(400).json({ error: phoneValidation.error });
+    }
+
+    // Role ID validation
+    if (!mongoose.Types.ObjectId.isValid(role)) {
       return res.status(400).json({ error: 'Invalid Role ID format' });
     }
 
@@ -30,6 +101,7 @@ exports.signup = async (req, res) => {
       return res.status(400).json({ error: 'Role does not exist' });
     }
 
+    // Check for existing user
     const existingUser = await User.findOne({
       $or: [
         { email: { $regex: `^${email}$`, $options: 'i' } },
@@ -41,8 +113,10 @@ exports.signup = async (req, res) => {
       return res.status(400).json({ error: 'Email or username already exists' });
     }
 
+    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Create user
     const user = new User({
       firstName,
       lastName,
@@ -56,8 +130,10 @@ exports.signup = async (req, res) => {
 
     const savedUser = await user.save();
 
+    // Generate JWT
     const token = jwt.sign({ userId: savedUser._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
+    // Send response
     res.status(201).json({
       message: 'User created successfully',
       user: {
